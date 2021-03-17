@@ -15,15 +15,15 @@ import Collage.Layout exposing (impose, horizontal, vertical)
 import Collage.Render exposing (svg)
 import Collage.Text 
 import Color
+import Array 
 
 type SudokuCell = Filled Int | Options (Set.Set Int) | Problem
-type alias SudokuBoard = List (List (SudokuCell))
+type alias SudokuBoard =  Array.Array (Array.Array (SudokuCell))
 type alias Model = {
   currentGame: SudokuBoard
-  , newGame: SudokuBoard
   }
 
-main : Program () Model Model
+main : Program () Model Msg
 main = 
   Browser.sandbox 
     { init = init
@@ -42,7 +42,7 @@ exampleGame = [ "9...2....",
          "....1...7"
       ]
 
-type Msg = StartGame 
+type Msg = Input String 
 
 createModel : (List String) -> SudokuBoard
 createModel game = 
@@ -52,16 +52,29 @@ createModel game =
         Just x -> Filled x 
         Nothing -> Options (Set.fromList (List.range 1 9))
   in 
-    (List.map (\chars -> List.map cell (String.toList chars)) game)
+    (Array.map (\chars -> Array.map cell (Array.fromList (String.toList chars))) (Array.fromList game))
 
 
 init : Model 
 init = 
-  {newGame = createModel exampleGame, currentGame = createModel exampleGame}
+  {currentGame = createModel exampleGame}
 
-update : Model -> Model -> Model 
-update model model1 = 
-  model 
+update : Msg -> Model -> Model 
+update msg model = 
+  case msg of 
+    Input x -> 
+      let 
+        row = (String.toInt (String.slice 0 1 x))
+        col = (String.toInt (String.slice 2 3 x))
+        input = (String.toInt (String.slice 4 5 x))
+        arr = model.currentGame
+      in 
+        case (row, col, input) of 
+          (Just a, Just b, Just c) -> 
+            case (Array.get a arr) of 
+             Just z -> {currentGame = (Array.set a (Array.set b (Filled c) z) arr)}
+             _ -> model 
+          _ -> model 
 
 createCell : SudokuCell -> Collage.Collage msg 
 createCell cell = 
@@ -72,12 +85,14 @@ createCell cell =
     Options _ -> (Collage.outlined (Collage.solid Collage.thin (Collage.uniform Color.black)) (Collage.square 50)) 
     Problem -> (Collage.outlined (Collage.solid Collage.thin (Collage.uniform Color.black)) (Collage.square 50)) 
 
-view : Model -> Html Model
+view : Model -> Html Msg
 view model = 
   let 
     m = model.currentGame
-    gameCells = (List.map (\cell -> List.map createCell cell) m)
+    gameCells = (List.map (\cell -> List.map createCell (Array.toList cell)) (Array.toList m))
     board = Collage.Layout.vertical (List.map Collage.Layout.horizontal gameCells)
+    input = Html.textarea [Html.Events.onInput Input] [Html.text "enter 'row,column,input' here"]
   in 
-    Html.div [] [Collage.Render.svg board]
+    Html.div [] ([input] ++[Collage.Render.svg board])
+
 
