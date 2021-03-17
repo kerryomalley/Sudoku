@@ -16,19 +16,24 @@ import Collage.Render exposing (svg)
 import Collage.Text 
 import Color
 import Array 
+import Json.Decode as Decode
+import Browser.Events
 
+type alias Flags = ()
 type SudokuCell = Filled Int | Options (Set.Set Int) | Problem
 type alias SudokuBoard =  Array.Array (Array.Array (SudokuCell))
 type alias Model = {
   currentGame: SudokuBoard
+  ,currentSquare: (Int, Int)
   }
 
-main : Program () Model Msg
+main : Program Flags Model Msg
 main = 
-  Browser.sandbox 
+  Browser.element
     { init = init
     , view = view
     , update = update
+    , subscriptions = subscriptions
     }
 
 exampleGame = [ "9...2....",
@@ -42,7 +47,7 @@ exampleGame = [ "9...2....",
          "....1...7"
       ]
 
-type Msg = Input String 
+type Msg = UpKey | DownKey | LeftKey | RightKey | Reset | Noop | Num String
 
 createModel : (List String) -> SudokuBoard
 createModel game = 
@@ -54,27 +59,50 @@ createModel game =
   in 
     (Array.map (\chars -> Array.map cell (Array.fromList (String.toList chars))) (Array.fromList game))
 
+init : Flags -> (Model, Cmd Msg)
+init () = 
+  (initModel, Cmd.none)
 
-init : Model 
-init = 
-  {currentGame = createModel exampleGame}
+initModel : Model 
+initModel = 
+  {currentGame = createModel exampleGame, currentSquare = (0,0)}
 
-update : Msg -> Model -> Model 
+update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = 
-  case msg of 
-    Input x -> 
-      let 
-        row = (String.toInt (String.slice 0 1 x))
-        col = (String.toInt (String.slice 2 3 x))
-        input = (String.toInt (String.slice 4 5 x))
-        arr = model.currentGame
-      in 
-        case (row, col, input) of 
-          (Just a, Just b, Just c) -> 
-            case (Array.get a arr) of 
-             Just z -> {currentGame = (Array.set a (Array.set b (Filled c) z) arr)}
-             _ -> model 
-          _ -> model 
+  let 
+    arr = model.currentGame
+    square = model.currentSquare
+    num1 = Tuple.first square
+    num2 = Tuple.second square
+  in 
+    case msg of 
+      UpKey -> 
+        if num1 == 0 then 
+          (model, Cmd.none)
+        else
+          ({currentGame = arr, currentSquare = (num1 - 1, num2)}, Cmd.none)
+      DownKey -> 
+        if num1 == 8 then 
+          (model, Cmd.none)
+        else
+          ({currentGame = arr, currentSquare = (num1+1, num2)}, Cmd.none)
+      LeftKey -> 
+        if num2 == 0 then 
+          (model, Cmd.none)
+        else
+          ({currentGame = arr, currentSquare = (num1, num2-1)}, Cmd.none)
+      RightKey -> 
+        if num2 == 8 then 
+          (model, Cmd.none)
+        else
+          ({currentGame = arr, currentSquare = (num1, num2+1)}, Cmd.none)
+      Num val ->
+        case ((Array.get num1 arr), (String.toInt val)) of 
+          (Just z, Just v) -> ({currentGame = (Array.set num1 (Array.set num2 (Filled v) z) arr), currentSquare = square}, Cmd.none)
+          _ -> (model, Cmd.none)
+      Reset -> (initModel, Cmd.none)
+      _ -> (model, Cmd.none)
+
 
 createCell : SudokuCell -> Collage.Collage msg 
 createCell cell = 
@@ -91,8 +119,26 @@ view model =
     m = model.currentGame
     gameCells = (List.map (\cell -> List.map createCell (Array.toList cell)) (Array.toList m))
     board = Collage.Layout.vertical (List.map Collage.Layout.horizontal gameCells)
-    input = Html.textarea [Html.Events.onInput Input] [Html.text "enter 'row,column,input' here"]
+    square = Html.text ((String.fromInt (Tuple.first model.currentSquare)) ++ ", " ++ (String.fromInt (Tuple.second model.currentSquare)))
+    reset = Html.button [onClick Reset] [Html.text "Reset"]
   in 
-    Html.div [] ([input] ++[Collage.Render.svg board])
+    Html.div [] ([Collage.Render.svg board] ++ [square] ++ [reset])
 
+keyDecoder : Decode.Decoder String 
+keyDecoder = 
+  Decode.field "key" Decode.string 
 
+subscriptions : Model -> Sub Msg
+subscriptions model = 
+  Sub.batch 
+  [ Browser.Events.onKeyDown
+      (Decode.map (\key -> if key == "ArrowUp" then UpKey else Noop) keyDecoder)
+  , Browser.Events.onKeyDown
+      (Decode.map (\key -> if key == "ArrowDown" then DownKey else Noop) keyDecoder) 
+  , Browser.Events.onKeyDown
+      (Decode.map (\key -> if key == "ArrowLeft" then LeftKey else Noop) keyDecoder)
+  , Browser.Events.onKeyDown
+      (Decode.map (\key -> if key == "ArrowRight" then RightKey else Noop) keyDecoder)
+  , Browser.Events.onKeyDown 
+      (Decode.map (\key -> if (List.member key ["1", "2", "3", "4", "5", "6", "7", "8", "9"]) then Num key else Noop) keyDecoder)
+  ]
